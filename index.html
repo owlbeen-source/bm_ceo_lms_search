@@ -362,23 +362,36 @@
   .modal-overlay {
     display: none;
     position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 1000;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 40px 20px;
-    overflow-y: auto;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal {
-    background: var(--white);
-    border-radius: var(--radius-lg);
+    top: 0;
+    left: 0;
     width: 100%;
-    max-width: 660px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    animation: slideUp 0.2s ease;
-    margin: auto;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  .modal {
+    display: block !important;
+    background: #ffffff;
+    width: 95%;
+    max-width: 800px;
+    margin: 30px auto;
+    padding: 1px;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    overflow: visible;
+    position: relative;
+  }
+  .modal-header, .modal-body, .related-section {
+    background: #ffffff;
+  }
+  .modal-header {
+    border-radius: 14px 14px 0 0;
+  }
+  .related-section {
+    border-radius: 0 0 14px 14px;
   }
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(20px); }
@@ -530,6 +543,15 @@
   }
 
   /* 전체 이력 모달 */
+  #allRelatedOverlay {
+    display: none;
+  }
+  #allRelatedOverlay.open {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 50px;
+  }
   .all-related-modal {
     background: var(--white);
     border-radius: var(--radius-lg);
@@ -539,7 +561,6 @@
     overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
     animation: slideUp 0.2s ease;
-    margin: auto;
   }
   .all-related-header {
     padding: 16px 20px;
@@ -1031,8 +1052,6 @@
     font-size: 12px;
     line-height: 1.7;
     white-space: pre-wrap;
-    max-height: 300px;
-    overflow-y: auto;
   }
   
   .modal-meta-info {
@@ -1406,6 +1425,7 @@
 </div>
 
 <script>
+console.log('=== 스크립트 시작 ===');
 // ─── 설정 ───────────────────────────────────────────
 const SCRIPT_URL = 'https://script.google.com/a/macros/woowahan.com/s/AKfycbyhHsU-5CaN1aPtUUSQz7odjTixuXiV1Ke3ATkITEaap0C_HP7NgmEWE0545whVp4IQ/exec';
 const CACHE_KEY = 'bamin_records_v2';
@@ -1464,9 +1484,14 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('searchInput').addEventListener('keydown', e => { 
     if (e.key === 'Enter') doSearch(); 
   });
-  document.getElementById('scheduleSearchInput').addEventListener('keydown', e => { 
-    if (e.key === 'Enter') filterSchedule(); 
-  });
+  
+  // scheduleSearchInput이 있을 때만 이벤트 추가
+  const scheduleInput = document.getElementById('scheduleSearchInput');
+  if (scheduleInput) {
+    scheduleInput.addEventListener('keydown', e => { 
+      if (e.key === 'Enter') filterSchedule(); 
+    });
+  }
 
   // 데이터 로드 시작
   loadData();
@@ -1533,8 +1558,41 @@ function convertJsonToRecords(data, filename) {
       const cases = item['케이스'] || [];
       if (cases.length > 0) {
         for (const c of cases) {
-          // 기존문구와 검토문구가 둘 다 비어있으면 건너뜀
-          if (!c['기존문구'] && !c['검토문구']) continue;
+          // 기존문구와 검토문구 합치기 (제목+본문이 분리된 경우 처리)
+          let originalMsg = '';
+          let reviewedMsg = '';
+          
+          // 기존문구 처리: 기존문구 필드 + 기존제목 + 기존본문
+          if (c['기존문구']) {
+            originalMsg = c['기존문구'];
+          }
+          if (c['기존제목'] || c['기존본문']) {
+            const title = c['기존제목'] || '';
+            const body = c['기존본문'] || '';
+            if (title && body) {
+              originalMsg = (originalMsg ? originalMsg + '\n\n' : '') + '제목: ' + title + '\n본문: ' + body;
+            } else {
+              originalMsg = (originalMsg ? originalMsg + '\n\n' : '') + (title || body);
+            }
+          }
+          
+          // 검토문구 처리: 검토문구 필드 + 검토제목 + 검토본문
+          if (c['검토문구']) {
+            reviewedMsg = c['검토문구'];
+          }
+          if (c['검토제목'] || c['검토본문']) {
+            const title = c['검토제목'] || '';
+            const body = c['검토본문'] || '';
+            if (title && body) {
+              reviewedMsg = (reviewedMsg ? reviewedMsg + '\n\n' : '') + '제목: ' + title + '\n본문: ' + body;
+            } else {
+              reviewedMsg = (reviewedMsg ? reviewedMsg + '\n\n' : '') + (title || body);
+            }
+          }
+          
+          // 기존문구와 검토문구 둘 다 있어야 레코드 추가
+          if (!originalMsg.trim() || !reviewedMsg.trim()) continue;
+          
           records.push({
             type: 'LMS',
             sheetName: item['시트명'] || '',
@@ -1542,26 +1600,12 @@ function convertJsonToRecords(data, filename) {
             sender: item['담당자'] || '',
             jiraLink: item['JIRA링크'] || '',
             requestDate: item['검토일_원본'] || '',
-            originalMsg1: c['기존문구'] || '',
-            reviewedMsg1: c['검토문구'] || '',
+            originalMsg1: originalMsg.trim(),
+            reviewedMsg1: reviewedMsg.trim(),
             reviewNote: item['주요검토사항'] || '',
             target: c['대상'] || item['대상'] || ''
           });
         }
-      } else {
-        // 케이스가 없는 경우 기본 데이터로
-        records.push({
-          type: 'LMS',
-          sheetName: item['시트명'] || '',
-          date: item['날짜'] || '',
-          sender: item['담당자'] || '',
-          jiraLink: item['JIRA링크'] || '',
-          requestDate: item['검토일_원본'] || '',
-          originalMsg1: '',
-          reviewedMsg1: '',
-          reviewNote: item['주요검토사항'] || '',
-          target: item['대상'] || ''
-        });
       }
     }
   }
@@ -1757,8 +1801,9 @@ function renderCards(records) {
   const cardsHtml = records.map((r, i) => {
     const tags = getTags(r);
     const preview = r.reviewNote || r.reviewedMsg1 || r.content || r.title || '';
+    const idx = allRecords.indexOf(r);
     return `
-      <div class="card" onclick="openModal(${allRecords.indexOf(r)})">
+      <div class="card" onclick="openModal(${idx})">
         <div class="card-header">
           <div class="card-title">${escHtml(r.sheetName || '제목 없음')}</div>
           ${r.date ? `<div class="card-date">${r.date}</div>` : ''}
@@ -1780,8 +1825,6 @@ function doSearch() {
   const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
   let results = allRecords;
   
-  console.log('doSearch 호출됨, allRecords:', allRecords.length, '개, activeFilters:', activeFilters);
-  
   if (keyword) {
     results = results.filter(r => {
       if (mode === 'content') return ((r.originalMsg1||'')+(r.reviewedMsg1||'')+(r.reviewNote||'')+(r.content||'')+(r.title||'')).toLowerCase().includes(keyword);
@@ -1793,7 +1836,6 @@ function doSearch() {
   }
   
   if (activeFilters.length) {
-    console.log('필터 적용 전 results:', results.length, '개');
     results = results.filter(r => {
       const tags = getTags(r);
       const text = ((r.sheetName||'') + ' ' + (r.originalMsg1||'') + ' ' + (r.reviewedMsg1||'') + ' ' + (r.reviewNote||'') + ' ' + (r.content||'') + ' ' + (r.title||'')).toLowerCase();
@@ -1806,13 +1848,8 @@ function doSearch() {
         return tags.includes(f);
       });
       
-      if (match) {
-        console.log('매칭된 레코드:', r.sheetName, '태그:', tags);
-      }
-      
       return match;
     });
-    console.log('필터 적용 후 results:', results.length, '개');
   }
   
   filteredRecords = results;
@@ -1821,7 +1858,6 @@ function doSearch() {
 
 function toggleFilter(el) {
   const filter = el.dataset.filter;
-  console.log('toggleFilter 호출됨, filter:', filter);
   el.classList.toggle('active');
   
   if (activeFilters.includes(filter)) {
@@ -1892,13 +1928,20 @@ function relatedCardHtml(item) {
 
 // ─── 모달 ───────────────────────────────────────────
 function openModal(idx) {
-  currentRecord = allRecords[idx];
-  const r = currentRecord;
-  const tags = getTags(r);
+  try {
+    currentRecord = allRecords[idx];
+    if (!currentRecord) {
+      console.error('Record not found at index:', idx);
+      return;
+    }
+    const r = currentRecord;
+    const tags = getTags(r);
 
-  document.getElementById('modalMeta').innerHTML =
+  const modalMetaEl = document.getElementById('modalMeta');
+  modalMetaEl.innerHTML =
     (r.date ? `<span class="modal-badge date">${r.date}</span>` : '') +
     tags.map(t => `<span class="modal-badge ${t==='장애대응'?'disaster':'tag'}">${t}</span>`).join('');
+  
   document.getElementById('modalSheetName').textContent = r.sheetName || '';
   document.getElementById('modalSender').textContent = r.sender || r.target || '';
 
@@ -1907,7 +1950,7 @@ function openModal(idx) {
     // 메타 정보 (담당자, Jira, 요청일, 대상)
     let metaHtml = '<div class="modal-section"><div class="modal-section-label">검토 정보</div><div class="modal-meta-info">';
     if (r.sender) metaHtml += `<div class="meta-item"><span class="meta-label">담당자</span><span class="meta-value">${escHtml(r.sender)}</span></div>`;
-    if (r.requestDate) metaHtml += `<div class="meta-item"><span class="meta-label">요청일</span><span class="meta-value">${escHtml(r.requestDate.split(' ')[0])}</span></div>`;
+    if (r.requestDate) metaHtml += `<div class="meta-item"><span class="meta-label">요청일</span><span class="meta-value">${escHtml((r.requestDate || '').split(' ')[0])}</span></div>`;
     if (r.target) metaHtml += `<div class="meta-item"><span class="meta-label">대상</span><span class="meta-value">${escHtml(r.target)}</span></div>`;
     if (r.jiraLink) metaHtml += `<div class="meta-item"><span class="meta-label">Jira</span><a href="${escHtml(r.jiraLink)}" target="_blank" class="meta-link">🔗 링크</a></div>`;
     metaHtml += '</div></div>';
@@ -1938,6 +1981,7 @@ function openModal(idx) {
   const related = getRelated(r, 50);
   const top5 = related.slice(0, 5);
   const relSection = document.getElementById('relatedSection');
+  
   if (top5.length) {
     relSection.innerHTML = `
       <div class="related-header">
@@ -1949,12 +1993,15 @@ function openModal(idx) {
     relSection.innerHTML = `<div style="padding:12px 0;font-size:12px;color:var(--text-muted);text-align:center;">관련 이력이 없어요</div>`;
   }
 
-  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('modalOverlay').style.display = 'block';
   document.body.style.overflow = 'hidden';
+  } catch (e) {
+    console.error('openModal error:', e);
+  }
 }
 
 function closeModal() {
-  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('modalOverlay').style.display = 'none';
   document.body.style.overflow = '';
 }
 
@@ -2234,23 +2281,29 @@ function escHtml(str) {
 
 // ─── Diff 하이라이팅 함수 ─────────────────────────────
 function highlightDiff(original, reviewed) {
-  // 간단한 단어 기반 diff
-  const origWords = original.split(/([\s\n]+)/);
-  const revWords = reviewed.split(/([\s\n]+)/);
-  const origSet = new Set(origWords.filter(w => w.trim()));
-  
-  let result = '';
-  for (const word of revWords) {
-    if (!word.trim()) {
-      result += escHtml(word);
-    } else if (!origSet.has(word)) {
-      // 새로 추가되거나 변경된 단어
-      result += `<span class="diff-highlight">${escHtml(word)}</span>`;
-    } else {
-      result += escHtml(word);
+  try {
+    if (!original || !reviewed) return escHtml(reviewed || '');
+    // 간단한 단어 기반 diff
+    const origWords = original.split(/([\s\n]+)/);
+    const revWords = reviewed.split(/([\s\n]+)/);
+    const origSet = new Set(origWords.filter(w => w.trim()));
+    
+    let result = '';
+    for (const word of revWords) {
+      if (!word.trim()) {
+        result += escHtml(word);
+      } else if (!origSet.has(word)) {
+        // 새로 추가되거나 변경된 단어
+        result += `<span class="diff-highlight">${escHtml(word)}</span>`;
+      } else {
+        result += escHtml(word);
+      }
     }
+    return result;
+  } catch (e) {
+    console.error('highlightDiff error:', e);
+    return escHtml(reviewed || '');
   }
-  return result;
 }
 </script>
 </body>
